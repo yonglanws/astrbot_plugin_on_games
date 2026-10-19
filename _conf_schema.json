@@ -1,0 +1,495 @@
+{
+  "update_interval_hours": {
+    "description": "题库自动更新间隔（小时）",
+    "type": "int",
+    "default": 24,
+    "hint": "每隔多少小时检查一次 MoeNotes master 数据。版本未变化时不会重复下载大文件。"
+  },
+  "request_timeout": {
+    "description": "网络请求超时（秒）",
+    "type": "int",
+    "default": 60,
+    "hint": "单次资源下载/题库请求的超时时间。CF 回源较慢时可适当调大。"
+  },
+  "download_concurrency": {
+    "description": "资源下载并发数",
+    "type": "int",
+    "default": 4,
+    "hint": "同时下载卡面/曲绘/音频的连接数。建议 3-6，过高可能被 Cloudflare 限速。"
+  },
+  "download_retries": {
+    "description": "下载失败重试次数",
+    "type": "int",
+    "default": 3,
+    "hint": "遇到超时、429、5xx 时的重试次数（指数退避）。"
+  },
+  "asset_base_url": {
+    "description": "资源服务器地址",
+    "type": "string",
+    "default": "https://assets.bdon.moe",
+    "hint": "MoeNotes 资源站根地址，默认国服简中源。末尾不要加 /。"
+  },
+  "asset_language": {
+    "description": "资源语言",
+    "type": "string",
+    "options": [
+      "zh-Hans",
+      "zh-Hant",
+      "ja",
+      "en",
+      "ko"
+    ],
+    "default": "zh-Hans",
+    "hint": "卡面/曲绘上文字的语言。默认 zh-Hans（简体中文）。"
+  },
+  "prefetch_assets": {
+    "description": "启动后后台预热资源",
+    "type": "bool",
+    "default": true,
+    "hint": "启动后以低并发提前缓存全部曲绘和卡面缩略图（约 40MB），可显著减少玩家开局等待。"
+  },
+  "prefetch_concurrency": {
+    "description": "预热并发数",
+    "type": "int",
+    "default": 3,
+    "hint": "后台预热资源的并发连接数，建议低于下载并发数。"
+  },
+  "asset_cache_max_mb": {
+    "description": "资源缓存上限（MB）",
+    "type": "int",
+    "default": 1024,
+    "hint": "卡面/曲绘/音频磁盘缓存上限。超过后按最久未使用顺序清理到 80%。设为 0 不限制。"
+  },
+  "connect_link_template": {
+    "description": "官机指令连接 markdown 模板",
+    "type": "string",
+    "default": "<qqbot-cmd-input text=\"{encoded_command}\" show=\"{encoded_name}\" />",
+    "hint": "仅 QQ 官方机器人使用。占位符：{name}/{command}/{self_id}/{at_text}/{encoded_name}/{encoded_command}/{encoded_at_text}。清空则退回纯文本。"
+  },
+  "quick_entries": {
+    "description": "结算快捷入口列表（仅官机）",
+    "type": "list",
+    "items": {
+      "type": "string"
+    },
+    "default": [
+      "猜歌",
+      "猜卡面",
+      "猜曲绘"
+    ],
+    "hint": "结算消息末尾显示的快捷入口指令，官机按钮无需加 on 前缀。留空则不显示。"
+  },
+  "answer_timeout": {
+    "description": "答题时长（秒）",
+    "type": "int",
+    "default": 30,
+    "hint": "每轮游戏等待玩家回答的时间。"
+  },
+  "daily_play_limit": {
+    "description": "每位玩家每日游戏次数上限",
+    "type": "int",
+    "default": 10,
+    "hint": "设为 -1 表示无限制。默认三个游戏共享次数；勾选“每游戏独立次数”后各自计算。"
+  },
+  "daily_limit_per_game": {
+    "description": "每个游戏独立计算每日次数",
+    "type": "bool",
+    "default": false,
+    "hint": "关闭时猜歌/猜卡面/猜曲绘共享每日次数；开启后每个游戏分别拥有 daily_play_limit 次。"
+  },
+  "game_cooldown_seconds": {
+    "description": "游戏冷却时间（秒）",
+    "type": "int",
+    "default": 10,
+    "hint": "同一会话两局之间的冷却时间。"
+  },
+  "max_guess_attempts": {
+    "description": "每轮最大猜测次数",
+    "type": "int",
+    "default": 10,
+    "hint": "猜卡面/猜曲绘/猜歌一轮内所有玩家的总猜测上限。设为 0 或 -1 表示不限制。"
+  },
+  "song_guesses_per_user": {
+    "description": "猜歌每位玩家作答次数",
+    "type": "int",
+    "default": 2,
+    "hint": "猜歌中每位玩家最多可以发送几个编号答案。"
+  },
+  "reward_valid_time": {
+    "description": "奖励有效时间（秒）",
+    "type": "int",
+    "default": 5,
+    "hint": "第一个玩家答对后，其他玩家在此时间内答对也能得分。设为 0 表示只有第一个答对者得分。"
+  },
+  "clip_duration_seconds": {
+    "description": "猜歌音频片段时长（秒）",
+    "type": "int",
+    "default": 10,
+    "hint": "发送给玩家的歌曲片段长度。"
+  },
+  "clip_start_ratio_min": {
+    "description": "音频起始位置下限（比例）",
+    "type": "float",
+    "default": 0.08,
+    "hint": "从歌曲的百分之几处开始随机截取，避免总是开头。"
+  },
+  "clip_start_ratio_max": {
+    "description": "音频起始位置上限（比例）",
+    "type": "float",
+    "default": 0.72,
+    "hint": "从歌曲的百分之几处开始随机截取。"
+  },
+  "song_2x_score": {
+    "description": "2倍速猜歌得分",
+    "type": "int",
+    "default": 1,
+    "hint": "2 倍速模式下答对获得的分数。"
+  },
+  "song_reverse_score": {
+    "description": "倒放猜歌得分",
+    "type": "int",
+    "default": 1,
+    "hint": "倒放模式下答对获得的分数。"
+  },
+  "random_mode_decay_factor": {
+    "description": "随机猜歌高难度权重衰减",
+    "type": "float",
+    "default": 0.75,
+    "hint": "随机模式中高分数组合的权重衰减系数，越小越容易出现低难度。"
+  },
+  "ranking_display_count": {
+    "description": "排行榜显示人数",
+    "type": "int",
+    "default": 10,
+    "hint": "排行榜图片显示前多少名，建议 5-20。"
+  },
+  "super_users": {
+    "description": "管理员用户ID列表",
+    "type": "list",
+    "items": {
+      "type": "string"
+    },
+    "default": [],
+    "hint": "拥有刷新题库、重置次数等管理员指令的用户 ID。"
+  },
+  "blacklist": {
+    "description": "黑名单用户ID列表",
+    "type": "list",
+    "items": {
+      "type": "string"
+    },
+    "default": [],
+    "hint": "被拉黑的用户无法参与游戏，排行榜显示统一标识。"
+  },
+  "group_whitelist": {
+    "description": "群聊白名单",
+    "type": "list",
+    "items": {
+      "type": "string"
+    },
+    "default": [],
+    "hint": "留空允许所有群聊；填写后仅这些群可用。"
+  },
+  "whitelist_reject_message": {
+    "description": "非白名单群聊提示",
+    "type": "string",
+    "default": "⚠️ 抱歉，当前群聊未在白名单中，无法使用此功能。如需使用，请联系管理员将本群添加到白名单。",
+    "hint": "留空则不提示。"
+  },
+  "debug_mode": {
+    "description": "调试模式",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后跳过冷却和每日次数，并在开局后立即公布答案，适合测试。"
+  },
+  "card_effects": {
+    "description": "猜卡面图片效果",
+    "type": "object",
+    "default": {},
+    "items": {
+      "light_blur": {
+        "description": "轻度模糊",
+        "type": "object",
+        "default": {},
+        "items": {
+          "enabled": {
+            "type": "bool",
+            "default": true,
+            "description": "启用"
+          },
+          "difficulty": {
+            "type": "int",
+            "default": 1,
+            "description": "得分"
+          },
+          "blur_radius": {
+            "type": "int",
+            "default": 8,
+            "description": "模糊半径"
+          }
+        }
+      },
+      "heavy_blur": {
+        "description": "重度模糊",
+        "type": "object",
+        "default": {},
+        "items": {
+          "enabled": {
+            "type": "bool",
+            "default": true,
+            "description": "启用"
+          },
+          "difficulty": {
+            "type": "int",
+            "default": 2,
+            "description": "得分"
+          },
+          "blur_radius": {
+            "type": "int",
+            "default": 25,
+            "description": "模糊半径"
+          }
+        }
+      },
+      "shuffle_blocks_easy": {
+        "description": "分块打乱(简易)",
+        "type": "object",
+        "default": {},
+        "items": {
+          "enabled": {
+            "type": "bool",
+            "default": true,
+            "description": "启用"
+          },
+          "difficulty": {
+            "type": "int",
+            "default": 1,
+            "description": "得分"
+          },
+          "block_size": {
+            "type": "int",
+            "default": 50,
+            "description": "区块大小"
+          }
+        }
+      },
+      "shuffle_blocks_hard": {
+        "description": "分块打乱(困难)",
+        "type": "object",
+        "default": {},
+        "items": {
+          "enabled": {
+            "type": "bool",
+            "default": true,
+            "description": "启用"
+          },
+          "difficulty": {
+            "type": "int",
+            "default": 3,
+            "description": "得分"
+          },
+          "block_size": {
+            "type": "int",
+            "default": 20,
+            "description": "区块大小"
+          }
+        }
+      },
+      "horizontal_slice": {
+        "description": "横向切割",
+        "type": "object",
+        "default": {},
+        "items": {
+          "enabled": {
+            "type": "bool",
+            "default": true,
+            "description": "启用"
+          },
+          "difficulty": {
+            "type": "int",
+            "default": 2,
+            "description": "得分"
+          },
+          "slice_count": {
+            "type": "int",
+            "default": 8,
+            "description": "切割条数"
+          }
+        }
+      },
+      "vertical_slice": {
+        "description": "纵向切割",
+        "type": "object",
+        "default": {},
+        "items": {
+          "enabled": {
+            "type": "bool",
+            "default": true,
+            "description": "启用"
+          },
+          "difficulty": {
+            "type": "int",
+            "default": 2,
+            "description": "得分"
+          },
+          "slice_count": {
+            "type": "int",
+            "default": 8,
+            "description": "切割条数"
+          }
+        }
+      },
+      "crop_area": {
+        "description": "截取区域",
+        "type": "object",
+        "default": {},
+        "items": {
+          "enabled": {
+            "type": "bool",
+            "default": true,
+            "description": "启用"
+          },
+          "difficulty": {
+            "type": "int",
+            "default": 1,
+            "description": "得分"
+          },
+          "crop_ratio": {
+            "type": "float",
+            "default": 0.5,
+            "description": "显示区域比例"
+          }
+        }
+      },
+      "two_strips": {
+        "description": "两长条截取",
+        "type": "object",
+        "default": {},
+        "items": {
+          "enabled": {
+            "type": "bool",
+            "default": true,
+            "description": "启用"
+          },
+          "difficulty": {
+            "type": "int",
+            "default": 3,
+            "description": "得分"
+          }
+        }
+      },
+      "three_strips": {
+        "description": "三长条截取",
+        "type": "object",
+        "default": {},
+        "items": {
+          "enabled": {
+            "type": "bool",
+            "default": true,
+            "description": "启用"
+          },
+          "difficulty": {
+            "type": "int",
+            "default": 4,
+            "description": "得分"
+          }
+        }
+      }
+    }
+  },
+  "jacket_effects": {
+    "description": "猜曲绘图片效果",
+    "type": "object",
+    "default": {},
+    "items": {
+      "blur": {
+        "description": "模糊",
+        "type": "object",
+        "default": {},
+        "items": {
+          "enabled": {
+            "type": "bool",
+            "default": true,
+            "description": "启用"
+          },
+          "difficulty": {
+            "type": "int",
+            "default": 1,
+            "description": "得分"
+          },
+          "blur_radius": {
+            "type": "int",
+            "default": 35,
+            "description": "模糊半径"
+          }
+        }
+      },
+      "random_crop": {
+        "description": "随机裁切",
+        "type": "object",
+        "default": {},
+        "items": {
+          "enabled": {
+            "type": "bool",
+            "default": true,
+            "description": "启用"
+          },
+          "difficulty": {
+            "type": "int",
+            "default": 1,
+            "description": "得分"
+          },
+          "crop_ratio": {
+            "type": "float",
+            "default": 0.3,
+            "description": "显示区域比例"
+          }
+        }
+      },
+      "shuffle_blocks_easy": {
+        "description": "分块打乱(简易)",
+        "type": "object",
+        "default": {},
+        "items": {
+          "enabled": {
+            "type": "bool",
+            "default": true,
+            "description": "启用"
+          },
+          "difficulty": {
+            "type": "int",
+            "default": 1,
+            "description": "得分"
+          },
+          "block_size": {
+            "type": "int",
+            "default": 50,
+            "description": "区块大小"
+          }
+        }
+      },
+      "shuffle_blocks_hard": {
+        "description": "分块打乱(困难)",
+        "type": "object",
+        "default": {},
+        "items": {
+          "enabled": {
+            "type": "bool",
+            "default": true,
+            "description": "启用"
+          },
+          "difficulty": {
+            "type": "int",
+            "default": 3,
+            "description": "得分"
+          },
+          "block_size": {
+            "type": "int",
+            "default": 20,
+            "description": "区块大小"
+          }
+        }
+      }
+    }
+  }
+}

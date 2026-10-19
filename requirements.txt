@@ -1,0 +1,6 @@
+Pillow>=9.0.0
+pilmoji
+aiohttp>=3.8
+pydub
+imageio-ffmpeg
+pypinyin
