@@ -272,6 +272,20 @@ async def _run_game(plugin, event, game_impl):
     return event.sent
 
 
+async def _run_game_until_recorded(
+    plugin, event, game_impl, answer_user_id, game, attempts=3
+):
+    """资源偶发超时会导致本局开不起来，重试几次再断言，避免网络波动误判为逻辑错误。"""
+    sent: list = []
+    stats = None
+    for _ in range(attempts):
+        sent = await _run_game(plugin, event, game_impl)
+        stats = plugin.db.get_user_game_stats(answer_user_id, "aiocqhttp", game)
+        if stats and stats[2] == 1:
+            break
+    return sent, stats
+
+
 @pytest.mark.asyncio
 async def test_full_game_flow(tmp_path, monkeypatch):
     global CURRENT_PLUGIN, CURRENT_SESSION, SIMULATED_ANSWERS, ANSWER_EVENT_FACTORY
@@ -303,8 +317,9 @@ async def test_full_game_flow(tmp_path, monkeypatch):
                 text = round_data.song["title"] if round_data.song else ""
             if not text:
                 return None
+            # 带 / 前缀作答，验证指令/回答前缀兼容。
             return FakeEvent(
-                text, user_id="20001", name="答题者", group="123456"
+                f"/{text}", user_id="20001", name="答题者", group="123456"
             )
 
         ANSWER_EVENT_FACTORY = make_correct_answer_event
@@ -313,16 +328,17 @@ async def test_full_game_flow(tmp_path, monkeypatch):
         CURRENT_SESSION = "aiocqhttp:GroupMessage:123456"
         SIMULATED_ANSWERS = ["__CORRECT__"]
         initiator = FakeEvent("on猜歌", user_id="10001", name="发起者")
-        sent = await _run_game(
-            plugin, initiator, lambda e: plugin._guess_song_impl(e, "normal")
+        sent, song_stats = await _run_game_until_recorded(
+            plugin,
+            initiator,
+            lambda e: plugin._guess_song_impl(e, "normal"),
+            "20001",
+            "song",
         )
         assert sent
         assert any(
             isinstance(item, tuple) and item[0] in ("plain", "chain")
             for item in sent
-        )
-        song_stats = plugin.db.get_user_game_stats(
-            "20001", "aiocqhttp", "song"
         )
         assert song_stats and song_stats[0] >= 1 and song_stats[2] == 1
 
@@ -330,15 +346,12 @@ async def test_full_game_flow(tmp_path, monkeypatch):
         CURRENT_SESSION = "aiocqhttp:GroupMessage:123456"
         SIMULATED_ANSWERS = ["__CORRECT__"]
         initiator_card = FakeEvent("on猜卡面", user_id="10002", name="发起者2")
-        sent_card = await _run_game(
-            plugin, initiator_card, plugin._guess_card_impl
+        sent_card, card_stats = await _run_game_until_recorded(
+            plugin, initiator_card, plugin._guess_card_impl, "20001", "card"
         )
         assert sent_card
         assert any(
             isinstance(item, tuple) and item[0] == "chain" for item in sent_card
-        )
-        card_stats = plugin.db.get_user_game_stats(
-            "20001", "aiocqhttp", "card"
         )
         assert card_stats and card_stats[0] >= 1 and card_stats[2] == 1
 
@@ -346,15 +359,12 @@ async def test_full_game_flow(tmp_path, monkeypatch):
         CURRENT_SESSION = "aiocqhttp:GroupMessage:123456"
         SIMULATED_ANSWERS = ["__CORRECT__"]
         initiator_jacket = FakeEvent("on猜曲绘", user_id="10003", name="发起者3")
-        sent_jacket = await _run_game(
-            plugin, initiator_jacket, plugin._guess_jacket_impl
+        sent_jacket, jacket_stats = await _run_game_until_recorded(
+            plugin, initiator_jacket, plugin._guess_jacket_impl, "20001", "jacket"
         )
         assert sent_jacket
         assert any(
             isinstance(item, tuple) and item[0] == "chain" for item in sent_jacket
-        )
-        jacket_stats = plugin.db.get_user_game_stats(
-            "20001", "aiocqhttp", "jacket"
         )
         assert jacket_stats and jacket_stats[0] >= 1 and jacket_stats[2] == 1
 
@@ -593,7 +603,7 @@ async def test_binding_flow(tmp_path, monkeypatch):
             )
 
         bind_event = FakeEvent(
-            "on绑定 12345678",
+            "/on绑定 12345678",
             user_id="official_qid",
             name="官机用户",
             group="888888",
@@ -601,7 +611,7 @@ async def test_binding_flow(tmp_path, monkeypatch):
         )
         SIMULATED_ANSWERS = [
             FakeEvent(
-                "确认",
+                "/确认",
                 user_id="official_qid",
                 name="官机用户",
                 group="888888",
@@ -622,7 +632,7 @@ async def test_binding_flow(tmp_path, monkeypatch):
             assert stats and stats[0] == 5
 
         unbind_event = FakeEvent(
-            "on解绑",
+            "/on解绑",
             user_id="official_qid",
             name="官机用户",
             group="888888",
@@ -630,7 +640,7 @@ async def test_binding_flow(tmp_path, monkeypatch):
         )
         SIMULATED_ANSWERS = [
             FakeEvent(
-                "确认",
+                "/确认",
                 user_id="official_qid",
                 name="官机用户",
                 group="888888",

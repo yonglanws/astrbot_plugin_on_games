@@ -203,6 +203,19 @@ async def test_plugin_index_and_answer_logic(tmp_path, monkeypatch):
         assert plugin_main._normalize_answer("  高松灯！ ") == "高松灯"
         assert plugin_main._normalize_answer("Ａｎｏｎ") == "anon"
 
+        # 指令/回答前缀：/、／、!、！ 都会被剥离
+        assert plugin_main._strip_command_prefix("/1") == "1"
+        assert plugin_main._strip_command_prefix("/高松灯") == "高松灯"
+        assert plugin_main._strip_command_prefix("／on猜歌") == "on猜歌"
+        assert plugin_main._strip_command_prefix("!确认") == "确认"
+        assert plugin_main._strip_command_prefix("//猜歌") == "猜歌"
+        assert plugin_main._strip_command_prefix("  无前缀  ") == "无前缀"
+        assert plugin_main._strip_command_prefix("") == ""
+
+        # 指令别名同时生成带 / 前缀的写法
+        aliases = plugin_main._command_aliases("on猜歌", "猜歌")
+        assert {"on猜歌", "/on猜歌", "猜歌", "/猜歌"} <= aliases
+
         # 卡面：角色 1 是 高松灯，角色 2 是 千早爱音
         card_1 = next(
             c for c in plugin.cards if c["kind"] == "member" and 1 in c["character_ids"]

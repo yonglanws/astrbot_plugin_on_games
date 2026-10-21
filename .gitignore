@@ -212,3 +212,4 @@ __marimo__/
 output/
 .pytest_cache/
 __pycache__/
+.mimosa/

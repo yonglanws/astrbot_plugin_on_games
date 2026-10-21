@@ -92,7 +92,7 @@ except ImportError:  # 以脚本方式加载（单测）时
 PLUGIN_NAME = "astrbot_plugin_on_games"
 PLUGIN_AUTHOR = "慵懒午睡"
 PLUGIN_DESCRIPTION = "OurNotes/MoeNotes 猜歌、猜卡面、猜曲绘三合一娱乐插件"
-PLUGIN_VERSION = "1.0.2"
+PLUGIN_VERSION = "1.0.3"
 PLUGIN_REPO_URL = "https://github.com/yonglanws/astrbot_plugin_on_games"
 
 GAME_SONG = "song"
@@ -135,6 +135,33 @@ def _normalize_answer(text: str) -> str:
         value,
     )
     return value
+
+
+# 指令/唤醒前缀。不同 AstrBot 版本与适配器对 message_str 是否已剥离前缀处理不一，
+# 这里统一再剥一次，保证 /猜歌、/1、/高松灯、/确认 都能正常使用。
+_COMMAND_PREFIXES = ("/", "／", "!", "！")
+
+
+def _strip_command_prefix(text: str) -> str:
+    """去掉开头的一个或多个指令前缀（/、／、!、！）。"""
+    value = str(text or "").strip()
+    while value:
+        for prefix in _COMMAND_PREFIXES:
+            if value.startswith(prefix):
+                value = value[len(prefix) :].lstrip()
+                break
+        else:
+            break
+    return value
+
+
+def _command_aliases(*names: str) -> set[str]:
+    """生成指令别名集合，同时提供带 / 前缀的写法。"""
+    aliases: set[str] = set()
+    for name in names:
+        aliases.add(name)
+        aliases.add(f"/{name}")
+    return aliases
 
 
 # 中文/日文短名（1-2 个字）也可以作为答案，英文名至少 3 个字符。
@@ -893,18 +920,13 @@ class OnGamesPlugin(Star):  # type: ignore
 
     @filter.command(
         "on猜歌",
-        alias={
-            "ournotes猜歌",
-            "moenotes猜歌",
-            "猜歌",
-            "on猜歌1",
-            "on猜歌2",
-            "2倍速猜歌",
-            "倒放猜歌",
-        },
+        alias=_command_aliases(
+            "on猜歌", "ournotes猜歌", "moenotes猜歌", "猜歌",
+            "on猜歌1", "on猜歌2", "2倍速猜歌", "倒放猜歌",
+        ),
     )
     async def start_guess_song(self, event: AstrMessageEvent):
-        text = event.message_str.strip().lower()
+        text = _strip_command_prefix(event.message_str).lower()
         if "随机" in text:
             mode_key = "random"
         elif (
@@ -925,7 +947,12 @@ class OnGamesPlugin(Star):  # type: ignore
         async for result in self._guess_song_impl(event, mode_key):
             yield result
 
-    @filter.command("随机猜歌", alias={"on随机猜歌", "ournotes随机猜歌", "moenotes随机猜歌"})
+    @filter.command(
+        "随机猜歌",
+        alias=_command_aliases(
+            "随机猜歌", "on随机猜歌", "ournotes随机猜歌", "moenotes随机猜歌"
+        ),
+    )
     async def start_random_guess_song(self, event: AstrMessageEvent):
         async for result in self._guess_song_impl(event, "random"):
             yield result
@@ -1038,7 +1065,7 @@ class OnGamesPlugin(Star):  # type: ignore
                 if is_official and not self._is_at_bot(answer_event):
                     return
 
-                answer_text = answer_event.message_str.strip()
+                answer_text = _strip_command_prefix(answer_event.message_str)
                 if not answer_text:
                     return
 
@@ -1164,13 +1191,10 @@ class OnGamesPlugin(Star):  # type: ignore
 
     @filter.command(
         "on猜卡面",
-        alias={
-            "ournotes猜卡面",
-            "moenotes猜卡面",
-            "猜卡面",
-            "猜卡",
-            "on猜卡",
-        },
+        alias=_command_aliases(
+            "on猜卡面", "ournotes猜卡面", "moenotes猜卡面",
+            "猜卡面", "猜卡", "on猜卡",
+        ),
     )
     async def start_guess_card(self, event: AstrMessageEvent):
         async for result in self._guess_card_impl(event):
@@ -1303,7 +1327,7 @@ class OnGamesPlugin(Star):  # type: ignore
                 if is_official and not self._is_at_bot(answer_event):
                     return
 
-                answer_text = answer_event.message_str.strip()
+                answer_text = _strip_command_prefix(answer_event.message_str)
                 if not answer_text:
                     return
 
@@ -1438,13 +1462,10 @@ class OnGamesPlugin(Star):  # type: ignore
 
     @filter.command(
         "on猜曲绘",
-        alias={
-            "ournotes猜曲绘",
-            "moenotes猜曲绘",
-            "猜曲绘",
-            "猜封面",
-            "on猜封面",
-        },
+        alias=_command_aliases(
+            "on猜曲绘", "ournotes猜曲绘", "moenotes猜曲绘",
+            "猜曲绘", "猜封面", "on猜封面",
+        ),
     )
     async def start_guess_jacket(self, event: AstrMessageEvent):
         async for result in self._guess_jacket_impl(event):
@@ -1548,7 +1569,7 @@ class OnGamesPlugin(Star):  # type: ignore
                 if is_official and not self._is_at_bot(answer_event):
                     return
 
-                answer_text = answer_event.message_str.strip()
+                answer_text = _strip_command_prefix(answer_event.message_str)
                 if not answer_text:
                     return
 
@@ -1680,14 +1701,10 @@ class OnGamesPlugin(Star):  # type: ignore
 
     @filter.command(
         "on帮助",
-        alias={
-            "ournotes帮助",
-            "moenotes帮助",
-            "on娱乐帮助",
-            "猜歌帮助",
-            "猜卡面帮助",
-            "猜曲绘帮助",
-        },
+        alias=_command_aliases(
+            "on帮助", "ournotes帮助", "moenotes帮助", "on娱乐帮助",
+            "猜歌帮助", "猜卡面帮助", "猜曲绘帮助",
+        ),
     )
     async def show_help(self, event: AstrMessageEvent):
         if not self._is_group_allowed(event):
@@ -1740,17 +1757,11 @@ class OnGamesPlugin(Star):  # type: ignore
 
     @filter.command(
         "on分数",
-        alias={
-            "ournotes分数",
-            "moenotes分数",
-            "on个人分数",
-            "猜歌分数",
-            "猜卡面分数",
-            "猜曲绘分数",
-            "猜歌个人分数",
-            "猜卡面个人分数",
-            "猜曲绘个人分数",
-        },
+        alias=_command_aliases(
+            "on分数", "ournotes分数", "moenotes分数", "on个人分数",
+            "猜歌分数", "猜卡面分数", "猜曲绘分数",
+            "猜歌个人分数", "猜卡面个人分数", "猜曲绘个人分数",
+        ),
     )
     async def show_user_score(self, event: AstrMessageEvent):
         if not self._is_group_allowed(event):
@@ -1766,7 +1777,7 @@ class OnGamesPlugin(Star):  # type: ignore
             yield event.plain_result("抱歉，你已被禁止使用此功能 😔")
             return
 
-        text = event.message_str
+        text = _strip_command_prefix(event.message_str)
         game: Optional[str] = None
         if "猜歌" in text:
             game = GAME_SONG
@@ -1870,18 +1881,11 @@ class OnGamesPlugin(Star):  # type: ignore
 
     @filter.command(
         "on排行榜",
-        alias={
-            "ournotes排行榜",
-            "moenotes排行榜",
-            "on排行",
-            "猜歌排行榜",
-            "猜卡面排行榜",
-            "猜曲绘排行榜",
-            "猜封面排行榜",
-            "本地猜歌排行榜",
-            "本地猜卡排行榜",
-            "本地猜曲绘排行榜",
-        },
+        alias=_command_aliases(
+            "on排行榜", "ournotes排行榜", "moenotes排行榜", "on排行",
+            "猜歌排行榜", "猜卡面排行榜", "猜曲绘排行榜", "猜封面排行榜",
+            "本地猜歌排行榜", "本地猜卡排行榜", "本地猜曲绘排行榜",
+        ),
     )
     async def show_ranking(self, event: AstrMessageEvent):
         if not self._is_group_allowed(event):
@@ -1890,7 +1894,7 @@ class OnGamesPlugin(Star):  # type: ignore
                 yield event.plain_result(reject)
             return
 
-        text = event.message_str
+        text = _strip_command_prefix(event.message_str)
         game: Optional[str] = None
         if "猜歌" in text:
             game = GAME_SONG
@@ -1929,25 +1933,19 @@ class OnGamesPlugin(Star):  # type: ignore
 
     @filter.command(
         "on绑定",
-        alias={
-            "ournotes绑定",
-            "moenotes绑定",
-            "on绑定QQ",
-            "on绑定qq",
-            "猜歌绑定",
-            "猜卡面绑定",
-            "猜曲绘绑定",
-            "猜歌绑定QQ",
-            "猜卡面绑定QQ",
-            "猜曲绘绑定QQ",
-        },
+        alias=_command_aliases(
+            "on绑定", "ournotes绑定", "moenotes绑定",
+            "on绑定QQ", "on绑定qq",
+            "猜歌绑定", "猜卡面绑定", "猜曲绘绑定",
+            "猜歌绑定QQ", "猜卡面绑定QQ", "猜曲绘绑定QQ",
+        ),
     )
     async def bind_account(self, event: AstrMessageEvent):
         if not self._is_qq_official_event(event):
             yield event.plain_result("此绑定功能仅支持 QQ 官方机器人使用。")
             return
 
-        parts = event.message_str.strip().split(maxsplit=1)
+        parts = _strip_command_prefix(event.message_str).split(maxsplit=1)
         qq_user_id = parts[1].strip() if len(parts) > 1 else ""
         if not re.fullmatch(r"\d{5,12}", qq_user_id):
             yield event.plain_result(
@@ -1985,7 +1983,7 @@ class OnGamesPlugin(Star):  # type: ignore
             controller: SessionController, answer_event: AstrMessageEvent
         ):
             nonlocal decision
-            answer_text = answer_event.message_str.strip()
+            answer_text = _strip_command_prefix(answer_event.message_str)
             if answer_text == "确认":
                 decision = "confirm"
                 controller.stop()
@@ -2026,15 +2024,11 @@ class OnGamesPlugin(Star):  # type: ignore
 
     @filter.command(
         "on解绑",
-        alias={
-            "ournotes解绑",
-            "moenotes解绑",
-            "on解绑QQ",
-            "on解绑qq",
-            "猜歌解绑",
-            "猜卡面解绑",
-            "猜曲绘解绑",
-        },
+        alias=_command_aliases(
+            "on解绑", "ournotes解绑", "moenotes解绑",
+            "on解绑QQ", "on解绑qq",
+            "猜歌解绑", "猜卡面解绑", "猜曲绘解绑",
+        ),
     )
     async def unbind_account(self, event: AstrMessageEvent):
         if not self._is_qq_official_event(event):
@@ -2062,7 +2056,7 @@ class OnGamesPlugin(Star):  # type: ignore
             controller: SessionController, answer_event: AstrMessageEvent
         ):
             nonlocal decision
-            answer_text = answer_event.message_str.strip()
+            answer_text = _strip_command_prefix(answer_event.message_str)
             if answer_text == "确认":
                 decision = "confirm"
                 controller.stop()
@@ -2104,14 +2098,10 @@ class OnGamesPlugin(Star):  # type: ignore
 
     @filter.command(
         "on自定义名称",
-        alias={
-            "ournotes自定义名称",
-            "moenotes自定义名称",
-            "on昵称",
-            "猜歌自定义名称",
-            "猜卡面自定义名称",
-            "猜曲绘自定义名称",
-        },
+        alias=_command_aliases(
+            "on自定义名称", "ournotes自定义名称", "moenotes自定义名称",
+            "on昵称", "猜歌自定义名称", "猜卡面自定义名称", "猜曲绘自定义名称",
+        ),
     )
     async def set_custom_name(self, event: AstrMessageEvent):
         if not self._is_group_allowed(event):
@@ -2125,7 +2115,7 @@ class OnGamesPlugin(Star):  # type: ignore
             yield event.plain_result("抱歉，你已被禁止使用此功能 😔")
             return
 
-        parts = event.message_str.strip().split(maxsplit=1)
+        parts = _strip_command_prefix(event.message_str).split(maxsplit=1)
         custom_name = parts[1].strip() if len(parts) > 1 else None
         if custom_name:
             if len(custom_name) > 20:
@@ -2161,13 +2151,10 @@ class OnGamesPlugin(Star):  # type: ignore
 
     @filter.command(
         "on重置次数",
-        alias={
-            "ournotes重置次数",
-            "重置猜歌次数",
-            "重置猜卡面次数",
-            "重置猜曲绘次数",
-            "on重置",
-        },
+        alias=_command_aliases(
+            "on重置次数", "ournotes重置次数", "on重置",
+            "重置猜歌次数", "重置猜卡面次数", "重置猜曲绘次数",
+        ),
     )
     async def reset_daily_limit(self, event: AstrMessageEvent):
         sender_id = str(event.get_sender_id())
@@ -2175,7 +2162,7 @@ class OnGamesPlugin(Star):  # type: ignore
             yield event.plain_result("只有管理员才能使用此命令哦~")
             return
 
-        parts = event.message_str.strip().split()
+        parts = _strip_command_prefix(event.message_str).split()
         target_id = parts[1] if len(parts) > 1 and parts[1].isdigit() else sender_id
         ok = await asyncio.to_thread(self.db.reset_daily_limit, target_id)
         if ok:
@@ -2185,12 +2172,10 @@ class OnGamesPlugin(Star):  # type: ignore
 
     @filter.command(
         "on刷新题库",
-        alias={
-            "ournotes刷新题库",
-            "刷新题库",
-            "刷新本地数据",
-            "重载题库",
-        },
+        alias=_command_aliases(
+            "on刷新题库", "ournotes刷新题库",
+            "刷新题库", "刷新本地数据", "重载题库",
+        ),
     )
     async def refresh_master_data(self, event: AstrMessageEvent):
         sender_id = str(event.get_sender_id())
@@ -2215,7 +2200,12 @@ class OnGamesPlugin(Star):  # type: ignore
             logger.error(f"[OurNotes] 手动刷新题库失败: {exc}", exc_info=True)
             yield event.plain_result(f"刷新失败: {exc}")
 
-    @filter.command("on题库状态", alias={"ournotes题库状态", "题库状态", "题库信息"})
+    @filter.command(
+        "on题库状态",
+        alias=_command_aliases(
+            "on题库状态", "ournotes题库状态", "题库状态", "题库信息"
+        ),
+    )
     async def show_master_status(self, event: AstrMessageEvent):
         if not self._is_group_allowed(event):
             reject = self._get_whitelist_reject_message()
