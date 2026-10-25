@@ -46,7 +46,7 @@
     "description": "启动后后台预热资源",
     "type": "bool",
     "default": true,
-    "hint": "启动后以低并发提前缓存全部曲绘和卡面缩略图（约 40MB），可显著减少玩家开局等待。"
+    "hint": "启动后以低并发提前缓存全部曲绘和完整卡面（约 250MB），可显著减少玩家开局等待。"
   },
   "prefetch_concurrency": {
     "description": "预热并发数",
@@ -224,7 +224,7 @@
           },
           "blur_radius": {
             "type": "int",
-            "default": 8,
+            "default": 40,
             "description": "模糊半径"
           }
         }
@@ -246,7 +246,7 @@
           },
           "blur_radius": {
             "type": "int",
-            "default": 25,
+            "default": 80,
             "description": "模糊半径"
           }
         }
@@ -268,7 +268,7 @@
           },
           "block_size": {
             "type": "int",
-            "default": 50,
+            "default": 128,
             "description": "区块大小"
           }
         }
@@ -290,7 +290,7 @@
           },
           "block_size": {
             "type": "int",
-            "default": 20,
+            "default": 48,
             "description": "区块大小"
           }
         }
@@ -312,7 +312,7 @@
           },
           "slice_count": {
             "type": "int",
-            "default": 8,
+            "default": 16,
             "description": "切割条数"
           }
         }
@@ -334,7 +334,7 @@
           },
           "slice_count": {
             "type": "int",
-            "default": 8,
+            "default": 16,
             "description": "切割条数"
           }
         }
@@ -356,42 +356,8 @@
           },
           "crop_ratio": {
             "type": "float",
-            "default": 0.5,
+            "default": 0.35,
             "description": "显示区域比例"
-          }
-        }
-      },
-      "two_strips": {
-        "description": "两长条截取",
-        "type": "object",
-        "default": {},
-        "items": {
-          "enabled": {
-            "type": "bool",
-            "default": true,
-            "description": "启用"
-          },
-          "difficulty": {
-            "type": "int",
-            "default": 3,
-            "description": "得分"
-          }
-        }
-      },
-      "three_strips": {
-        "description": "三长条截取",
-        "type": "object",
-        "default": {},
-        "items": {
-          "enabled": {
-            "type": "bool",
-            "default": true,
-            "description": "启用"
-          },
-          "difficulty": {
-            "type": "int",
-            "default": 4,
-            "description": "得分"
           }
         }
       }

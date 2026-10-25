@@ -92,7 +92,7 @@ except ImportError:  # 以脚本方式加载（单测）时
 PLUGIN_NAME = "astrbot_plugin_on_games"
 PLUGIN_AUTHOR = "慵懒午睡"
 PLUGIN_DESCRIPTION = "OurNotes/MoeNotes 猜歌、猜卡面、猜曲绘三合一娱乐插件"
-PLUGIN_VERSION = "1.0.3"
+PLUGIN_VERSION = "1.0.4"
 PLUGIN_REPO_URL = "https://github.com/yonglanws/astrbot_plugin_on_games"
 
 GAME_SONG = "song"
@@ -799,8 +799,9 @@ class OnGamesPlugin(Star):  # type: ignore
             card = random.choice(candidates)
             tried.add(card["id"])
             try:
+                # 完整卡面体积较大（1-3MB），首次下载给足时间。
                 image = await asyncio.wait_for(
-                    self._load_card_image(card), timeout=35
+                    self._load_card_image(card), timeout=60
                 )
             except asyncio.TimeoutError:
                 image = None
@@ -1220,12 +1221,6 @@ class OnGamesPlugin(Star):  # type: ignore
                 yield event.plain_result("卡面加载失败，请稍后再试。")
                 return
             card, image = picked
-
-            # 在玩家思考期间后台预取完整卡面，结算时直接读缓存。
-            if card.get("full_key"):
-                self._track_task(
-                    asyncio.create_task(self.assets.fetch_bytes(card["full_key"]))
-                )
 
             effect_name, effect_display, difficulty = self.images.random_card_effect()
             processed = await asyncio.to_thread(
