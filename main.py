@@ -65,7 +65,6 @@ try:
     )
     from .services.db_service import (
         DEFAULT_PLATFORM_NAME,
-        MAX_BINDINGS_PER_QQ,
         OFFICIAL_PLATFORM_NAME,
     )
     from .services.master_data_service import MIN_CARD_RARITY
@@ -82,17 +81,21 @@ except ImportError:  # 以脚本方式加载（单测）时
     )
     from services.db_service import (  # type: ignore
         DEFAULT_PLATFORM_NAME,
-        MAX_BINDINGS_PER_QQ,
         OFFICIAL_PLATFORM_NAME,
     )
     from services.master_data_service import MIN_CARD_RARITY  # type: ignore
+
+try:
+    from .binding_adapter import BindingAdapter
+except ImportError:  # 以脚本方式加载（单测）时
+    from binding_adapter import BindingAdapter  # type: ignore
 
 
 # --- 插件元数据 ---
 PLUGIN_NAME = "astrbot_plugin_on_games"
 PLUGIN_AUTHOR = "慵懒午睡"
 PLUGIN_DESCRIPTION = "OurNotes/MoeNotes 猜歌、猜卡面、猜曲绘三合一娱乐插件"
-PLUGIN_VERSION = "1.0.3"
+PLUGIN_VERSION = "1.0.4"
 PLUGIN_REPO_URL = "https://github.com/yonglanws/astrbot_plugin_on_games"
 
 GAME_SONG = "song"
@@ -173,22 +176,6 @@ class GameSessionFilter(SessionFilter):
 
     def filter(self, event: AstrMessageEvent) -> str:
         return _normalized_session_id(event)
-
-
-class BindingSessionFilter(SessionFilter):
-    """只接收发起绑定的同一用户在同一会话中的确认消息。"""
-
-    def __init__(self, session_id: str, user_id: str):
-        self.session_id = str(session_id)
-        self.user_id = str(user_id)
-
-    def filter(self, event: AstrMessageEvent) -> str:
-        if (
-            str(event.unified_msg_origin) != self.session_id
-            or str(event.get_sender_id()) != self.user_id
-        ):
-            return ""
-        return f"{event.unified_msg_origin}:{event.get_sender_id()}"
 
 
 @dataclass
@@ -277,6 +264,8 @@ class OnGamesPlugin(Star):  # type: ignore
             )
         except RuntimeError:
             pass
+
+        self.binding_adapter = BindingAdapter(self)
 
         logger.info(f"OurNotes 娱乐插件已初始化 (v{PLUGIN_VERSION})")
 
@@ -565,9 +554,25 @@ class OnGamesPlugin(Star):  # type: ignore
     def _is_qq_official_event(self, event: AstrMessageEvent) -> bool:
         return self._get_event_platform_name(event) == OFFICIAL_PLATFORM_NAME
 
+    async def _is_bound_qq_sender(self, event: AstrMessageEvent, user_id: str) -> bool:
+        """判断官机事件是否已被中央绑定插件替换为绑定 QQ。"""
+        getter = getattr(event, "get_extra", None)
+        if callable(getter):
+            try:
+                openid = str(getter("mzkbot_openid") or "").strip()
+            except Exception:
+                openid = ""
+            if openid:
+                return openid != user_id
+        return await asyncio.to_thread(self.db.count_qq_bindings, user_id) > 0
+
     async def _get_account_identity(self, event: AstrMessageEvent) -> tuple[str, str]:
         platform_name = self._get_event_platform_name(event)
         raw_user_id = str(event.get_sender_id())
+        if platform_name == OFFICIAL_PLATFORM_NAME and await self._is_bound_qq_sender(
+            event, raw_user_id
+        ):
+            return raw_user_id, DEFAULT_PLATFORM_NAME
         resolved = await asyncio.to_thread(
             self.db.resolve_user_id, platform_name, raw_user_id
         )
@@ -696,13 +701,6 @@ class OnGamesPlugin(Star):  # type: ignore
                     self._build_connect_link(name, self_id) for name in entries
                 )
             )
-        # 绑定 / 解绑固定置于最底部。
-        lines.append(
-            "  ".join(
-                self._build_connect_link(name, self_id)
-                for name in ("绑定QQ", "解绑")
-            )
-        )
         return lines
 
     def _append_official_buttons(
@@ -799,8 +797,9 @@ class OnGamesPlugin(Star):  # type: ignore
             card = random.choice(candidates)
             tried.add(card["id"])
             try:
+                # 完整卡面体积较大（1-3MB），首次下载给足时间。
                 image = await asyncio.wait_for(
-                    self._load_card_image(card), timeout=35
+                    self._load_card_image(card), timeout=60
                 )
             except asyncio.TimeoutError:
                 image = None
@@ -1220,12 +1219,6 @@ class OnGamesPlugin(Star):  # type: ignore
                 yield event.plain_result("卡面加载失败，请稍后再试。")
                 return
             card, image = picked
-
-            # 在玩家思考期间后台预取完整卡面，结算时直接读缓存。
-            if card.get("full_key"):
-                self._track_task(
-                    asyncio.create_task(self.assets.fetch_bytes(card["full_key"]))
-                )
 
             effect_name, effect_display, difficulty = self.images.random_card_effect()
             processed = await asyncio.to_thread(
@@ -1735,8 +1728,7 @@ class OnGamesPlugin(Star):  # type: ignore
             "【猜曲绘】\n"
             "on猜曲绘 / 猜曲绘 - 根据处理后的曲绘猜歌名\n\n"
             "【账号与数据】\n"
-            "on绑定 QQ号 - QQ官方机器人绑定到普通QQ号（需发送“确认”，每个QQ最多绑定两个官机）\n"
-            "on解绑 - 解除官方机与QQ号的绑定（需发送“确认”）\n"
+            "绑定/解绑请使用中央命令：/绑定QQ 你的QQ号、/验证QQ 6位验证码、/解绑QQ。\n"
             "on分数 - 查看总分与三个游戏的详细数据\n"
             "on猜歌排行榜 - 猜歌排行榜\n"
             "on猜卡面排行榜 - 猜卡面排行榜\n"
@@ -1794,11 +1786,11 @@ class OnGamesPlugin(Star):  # type: ignore
         }.get(raw_platform, raw_platform)
 
         identity_lines = [f"🌐 平台: {platform_display}"]
-        if raw_platform == OFFICIAL_PLATFORM_NAME and user_id == raw_user_id:
+        if platform == OFFICIAL_PLATFORM_NAME and user_id == raw_user_id:
             identity_lines.extend(
                 [
                     "当前官方机器人账号尚未绑定QQ号。",
-                    "如需将官方机分数迁移到普通QQ账号，请发送：on绑定 QQ号",
+                    "请先发送 /绑定QQ 你的QQ号，完成邮箱验证后再使用。",
                 ]
             )
         elif user_id != raw_user_id:
@@ -1928,171 +1920,6 @@ class OnGamesPlugin(Star):  # type: ignore
             yield event.image_result(path)
         else:
             yield event.plain_result("生成排行榜图片时出错，请联系管理员。")
-
-    # ---------- 绑定 / 解绑 ----------
-
-    @filter.command(
-        "on绑定",
-        alias=_command_aliases(
-            "on绑定", "ournotes绑定", "moenotes绑定",
-            "on绑定QQ", "on绑定qq",
-            "猜歌绑定", "猜卡面绑定", "猜曲绘绑定",
-            "猜歌绑定QQ", "猜卡面绑定QQ", "猜曲绘绑定QQ",
-        ),
-    )
-    async def bind_account(self, event: AstrMessageEvent):
-        if not self._is_qq_official_event(event):
-            yield event.plain_result("此绑定功能仅支持 QQ 官方机器人使用。")
-            return
-
-        parts = _strip_command_prefix(event.message_str).split(maxsplit=1)
-        qq_user_id = parts[1].strip() if len(parts) > 1 else ""
-        if not re.fullmatch(r"\d{5,12}", qq_user_id):
-            yield event.plain_result(
-                "请按“on绑定 QQ号”的格式输入，例如：on绑定 21555762216。"
-            )
-            return
-
-        official_user_id = str(event.get_sender_id())
-        current_user_id = await asyncio.to_thread(
-            self.db.resolve_user_id, OFFICIAL_PLATFORM_NAME, official_user_id
-        )
-        if str(current_user_id) != official_user_id:
-            yield event.plain_result(
-                f"当前官方机器人账号已经绑定至 QQ号 {current_user_id}。"
-            )
-            return
-
-        bound_count = await asyncio.to_thread(self.db.count_qq_bindings, qq_user_id)
-        if bound_count >= MAX_BINDINGS_PER_QQ:
-            yield event.plain_result("绑定失败：该QQ号已绑定两个官机账号，无法继续绑定。")
-            return
-
-        lines = [f"你确认将账号绑定至  {qq_user_id} ？官方机在三个游戏里的分数将迁移至该账号。"]
-        if bound_count == 1:
-            lines.append(
-                "你已经绑定过一个官机了，你只能绑定两个官机，请确认你是否要绑定此账号。"
-            )
-        lines.append("发送“确认”将开始绑定。发送“取消”将取消绑定。")
-        yield event.plain_result("\n".join(lines))
-
-        decision = None
-
-        @session_waiter(timeout=60)
-        async def binding_waiter(
-            controller: SessionController, answer_event: AstrMessageEvent
-        ):
-            nonlocal decision
-            answer_text = _strip_command_prefix(answer_event.message_str)
-            if answer_text == "确认":
-                decision = "confirm"
-                controller.stop()
-            elif answer_text == "取消":
-                decision = "cancel"
-                controller.stop()
-
-        try:
-            await binding_waiter(
-                event,
-                session_filter=BindingSessionFilter(
-                    event.unified_msg_origin, official_user_id
-                ),
-            )
-        except TimeoutError:
-            yield event.plain_result("绑定确认已超时，绑定操作已取消。")
-            return
-
-        if decision == "cancel":
-            yield event.plain_result("已取消绑定。")
-            return
-        if decision != "confirm":
-            yield event.plain_result("未收到有效的绑定确认，绑定操作已取消。")
-            return
-
-        bound = await asyncio.to_thread(
-            self.db.bind_official_account,
-            OFFICIAL_PLATFORM_NAME,
-            official_user_id,
-            qq_user_id,
-        )
-        if bound:
-            yield event.plain_result(
-                f"绑定成功！官方机的历史分数已迁移至 QQ号 {qq_user_id}。"
-            )
-        else:
-            yield event.plain_result("绑定失败：该官方账号可能已绑定，请稍后重试。")
-
-    @filter.command(
-        "on解绑",
-        alias=_command_aliases(
-            "on解绑", "ournotes解绑", "moenotes解绑",
-            "on解绑QQ", "on解绑qq",
-            "猜歌解绑", "猜卡面解绑", "猜曲绘解绑",
-        ),
-    )
-    async def unbind_account(self, event: AstrMessageEvent):
-        if not self._is_qq_official_event(event):
-            yield event.plain_result("此解绑功能仅支持 QQ 官方机器人使用。")
-            return
-
-        official_user_id = str(event.get_sender_id())
-        current_user_id = await asyncio.to_thread(
-            self.db.resolve_user_id, OFFICIAL_PLATFORM_NAME, official_user_id
-        )
-        if str(current_user_id) == official_user_id:
-            yield event.plain_result("当前官方机器人账号尚未绑定QQ号。")
-            return
-
-        yield event.plain_result(
-            f"你确认解除该官方机器人账号与 QQ号 {current_user_id} 的绑定？"
-            "已迁移的历史分数不会退回，绑定名额将释放。\n"
-            "发送“确认”将开始解绑。发送“取消”将取消解绑。"
-        )
-
-        decision = None
-
-        @session_waiter(timeout=60)
-        async def unbinding_waiter(
-            controller: SessionController, answer_event: AstrMessageEvent
-        ):
-            nonlocal decision
-            answer_text = _strip_command_prefix(answer_event.message_str)
-            if answer_text == "确认":
-                decision = "confirm"
-                controller.stop()
-            elif answer_text == "取消":
-                decision = "cancel"
-                controller.stop()
-
-        try:
-            await unbinding_waiter(
-                event,
-                session_filter=BindingSessionFilter(
-                    event.unified_msg_origin, official_user_id
-                ),
-            )
-        except TimeoutError:
-            yield event.plain_result("解绑确认已超时，解绑操作已取消。")
-            return
-
-        if decision == "cancel":
-            yield event.plain_result("已取消解绑。")
-            return
-        if decision != "confirm":
-            yield event.plain_result("未收到有效的解绑确认，解绑操作已取消。")
-            return
-
-        unbound = await asyncio.to_thread(
-            self.db.unbind_official_account,
-            OFFICIAL_PLATFORM_NAME,
-            official_user_id,
-        )
-        if unbound:
-            yield event.plain_result(
-                f"解绑成功，该官方机器人账号已解除与 QQ号 {current_user_id} 的绑定。"
-            )
-        else:
-            yield event.plain_result("解绑失败，请稍后重试。")
 
     # ---------- 自定义名称 ----------
 

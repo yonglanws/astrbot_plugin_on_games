@@ -79,6 +79,9 @@ async def test_master_data_download_and_build(tmp_path):
         for card in cards[:10]:
             assert card["image_key"]
             assert card["full_key"]
+            # 题目图必须用完整卡面：缩略图本身是裁切区域。
+            assert "thumbnail" not in card["image_key"]
+            assert card["image_key"] == card["full_key"]
             assert card["character_ids"]
             assert card["rarity_label"]
 
@@ -361,13 +364,14 @@ def test_config_schema():
     assert required <= set(schema)
     assert schema["asset_base_url"]["default"] == "https://assets.bdon.moe"
     assert schema["asset_language"]["default"] == "zh-Hans"
-    assert set(schema["card_effects"]["items"]) >= {
+    assert set(schema["card_effects"]["items"]) == {
         "light_blur",
         "heavy_blur",
+        "shuffle_blocks_easy",
+        "shuffle_blocks_hard",
         "horizontal_slice",
         "vertical_slice",
-        "two_strips",
-        "three_strips",
+        "crop_area",
     }
     assert set(schema["jacket_effects"]["items"]) == {
         "blur",

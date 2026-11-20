@@ -14,7 +14,7 @@ OurNotes 三合一娱乐插件：**猜歌、猜卡面、猜曲绘**
 - **绑定系统**：QQ 官方机器人可绑定到普通 QQ 号，三个游戏的历史分数一起迁移；每个 QQ 最多绑定两个官机。
 - **排行榜**：猜歌、猜卡面、猜曲绘三个排行榜相互独立，各自单独查看，沿用横向表格 UI。
 - **官方机按钮**：结算消息带 `qqbot-cmd-input` 快捷指令按钮，按钮文字不带 `on` 前缀；只显示当前游戏的查分与排行榜，绑定与解绑固定位于最底部。
-- **资源缓存**：资源只下载一次，后台预热曲绘与卡面缩略图，减少开局等待。
+- **资源缓存**：资源只下载一次，后台预热曲绘与完整卡面，减少开局等待。
 - **不提供自动模式**。
 
 ## 指令
@@ -74,14 +74,12 @@ OurNotes 三合一娱乐插件：**猜歌、猜卡面、猜曲绘**
 
 | 类型 | 路径 |
 | --- | --- |
-| 成员卡缩略图 | `MemberCard/{assetId}/member_thumbnail/member_thumbnail.webp` |
-| 成员卡完整图 | `MemberCard/{assetId}/member_full/member_full.webp` |
-| 支援卡缩略图 | `SupportCard/{assetId}/snap_thumbnail/snap_thumbnail.webp` |
-| 支援卡完整图 | `SupportCard/{assetId}/snap_full/snap_full.webp` |
+| 成员卡完整图（题目与结算） | `MemberCard/{assetId}/member_full/member_full.webp` |
+| 支援卡完整图（题目与结算） | `SupportCard/{assetId}/snap_full/snap_full.webp` |
 | 曲绘 | `Image/Jacket/{jacketAsset}/{jacketAsset}.webp` |
 | 音频 | `Cri/Sound/{cueSheet}/{cue}.m4a` |
 
-资源站使用 Cloudflare，首次回源可能较慢。插件采用三层缓解：启动后后台低并发预热全部缩略图、玩家思考期间预取完整卡面、磁盘缓存 + 连接池复用。音频截取使用 ffmpeg（优先系统安装，其次 `imageio-ffmpeg` 自带二进制），不可用时回退 pydub。
+资源站使用 Cloudflare，首次回源可能较慢。插件采用两层缓解：启动后后台低并发预热全部曲绘与完整卡面、磁盘缓存 + 连接池复用。音频截取使用 ffmpeg（优先系统安装，其次 `imageio-ffmpeg` 自带二进制），不可用时回退 pydub。
 
 ## 猜卡面卡池
 
@@ -150,7 +148,7 @@ OurNotes 三合一娱乐插件：**猜歌、猜卡面、猜曲绘**
 | `download_retries` | 3 | 超时/429/5xx 的重试次数（指数退避） |
 | `asset_base_url` | `https://assets.bdon.moe` | 资源站根地址 |
 | `asset_language` | `zh-Hans` | 卡面/曲绘文字语言 |
-| `prefetch_assets` | `true` | 启动后后台预热缩略图 |
+| `prefetch_assets` | `true` | 启动后后台预热曲绘与完整卡面 |
 | `prefetch_concurrency` | 3 | 预热并发数 |
 | `asset_cache_max_mb` | 1024 | 资源缓存上限，0 为不限制 |
 | `connect_link_template` | qqbot 模板 | 官机按钮模板 |
@@ -202,4 +200,4 @@ python -m pytest tests -q
 
 - 如果服务器里仍安装着其他猜歌/猜卡面/猜曲绘插件，请先禁用或移除，避免指令冲突。
 - 猜卡面卡池只含 SR 以上卡牌；R 卡不会出现。
-- 首次未缓存的资源需要从 Cloudflare 回源，可能比之后慢；插件会在后台预热缩略图，并在玩家思考时预取完整卡面。
+- 首次未缓存的资源需要从 Cloudflare 回源，可能比之后慢；插件会在后台预热曲绘与完整卡面。

@@ -8,7 +8,7 @@
     https://assets.bdon.moe/zh-Hans/Cri/Sound/M_Mayoiuta/M_Mayoiuta.m4a
 
 Cloudflare 首次回源可能较慢，之后边缘缓存会很快。插件侧再做一层磁盘缓存，
-并通过后台预热把曲绘/卡面缩略图提前拉下来，避免玩家开局时等待。
+并通过后台预热把曲绘/完整卡面提前拉下来，避免玩家开局时等待。
 """
 
 from __future__ import annotations

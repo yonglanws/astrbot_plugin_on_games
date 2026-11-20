@@ -1,7 +1,7 @@
 name: astrbot_plugin_on_games
 display_name: OurNotes娱乐插件
 desc: OurNotes猜歌、猜卡面、猜曲绘三合一娱乐插件
-version: v1.0.3
+version: v1.0.4
 author: 慵懒午睡
 repo: https://github.com/yonglanws/astrbot_plugin_on_games
 support_platforms:

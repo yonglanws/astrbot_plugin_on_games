@@ -35,7 +35,7 @@ BRANCH = "main"
 REGION = "hk-tw-mo"
 
 # 派生规则版本：字段/筛选规则变化时 +1，启动时用本地原始文件离线重建。
-DERIVED_RULE = 5
+DERIVED_RULE = 6
 
 # 猜卡面只保留 SR 及以上稀有度（R 卡过于简单，不进卡池）。
 MIN_CARD_RARITY = 3
@@ -203,6 +203,17 @@ class MasterDataService:
                 region_info = (remote.get("regions") or {}).get(REGION) or {}
                 remote_version = str(region_info.get("version") or "").strip()
 
+            # 派生规则变化时优先用本地原始 master 文件离线重建，避免网络失败后
+            # 继续沿用旧规则的派生数据（例如卡面 key 仍是缩略图）。
+            rule = int(self.meta.get("derived_rule") or 0)
+            if (
+                not force
+                and rule != DERIVED_RULE
+                and (not remote_version or remote_version == self.meta.get("version"))
+            ):
+                if self._rebuild_from_local_raw(now):
+                    return True
+
             if (
                 not force
                 and remote_version
@@ -281,6 +292,44 @@ class MasterDataService:
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"[OurNotes] current_version.json 解析失败: {exc}")
             return None
+
+    def _load_local_raw(self) -> Optional[dict[str, Any]]:
+        region_dir = self.raw_dir / REGION
+        raw: dict[str, Any] = {}
+        for filename in MASTER_FILES:
+            path = region_dir / filename
+            if not path.exists():
+                return None
+            try:
+                raw[filename] = json.loads(path.read_text(encoding="utf-8"))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"[OurNotes] 本地 master 文件解析失败 {path}: {exc}")
+                return None
+        return raw
+
+    def _rebuild_from_local_raw(self, now: float) -> bool:
+        """用本地原始 master 数据按当前派生规则重建题库，不依赖网络。"""
+        raw = self._load_local_raw()
+        if raw is None:
+            return False
+        try:
+            songs, cards, characters, bands = self._build_derived(raw)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"[OurNotes] 本地题库重建失败: {exc}", exc_info=True)
+            return False
+        if not songs or not cards or not characters:
+            return False
+        self._store_derived(songs, cards, characters, bands)
+        self.version = str(self.meta.get("version") or "")
+        self.meta["derived_rule"] = DERIVED_RULE
+        self.meta["checked_at"] = now
+        self._save_meta()
+        self._notify_updated()
+        logger.info(
+            f"[OurNotes] 已用本地 master 数据重建题库（规则 {DERIVED_RULE}）："
+            f"{len(songs)} 首歌 / {len(cards)} 张卡 / {len(characters)} 个角色。"
+        )
+        return True
 
     async def _download_all(self) -> Optional[dict[str, Any]]:
         semaphore = asyncio.Semaphore(3)
@@ -509,8 +558,9 @@ class MasterDataService:
                     "rarity_label": rarity_label(row.get("_rarity") or 0),
                     "card_type": int(row.get("_cardType") or 0),
                     "title": text(row.get("_subtitleTextID")),
+                    # member_thumbnail 本身就是裁切后的区域，题目与结算统一用完整卡面。
                     "image_key": (
-                        f"MemberCard/{int(asset_id)}/member_thumbnail/member_thumbnail.webp"
+                        f"MemberCard/{int(asset_id)}/member_full/member_full.webp"
                     ),
                     "full_key": (
                         f"MemberCard/{int(asset_id)}/member_full/member_full.webp"
@@ -545,9 +595,7 @@ class MasterDataService:
                     "rarity_label": rarity_label(row.get("_rarity") or 0),
                     "card_type": int(row.get("_cardType") or 0),
                     "title": text(row.get("_descriptionTextID")),
-                    "image_key": (
-                        f"SupportCard/{int(asset_id)}/snap_thumbnail/snap_thumbnail.webp"
-                    ),
+                    "image_key": f"SupportCard/{int(asset_id)}/snap_full/snap_full.webp",
                     "full_key": f"SupportCard/{int(asset_id)}/snap_full/snap_full.webp",
                     "start_at": row.get("_startAt") or "",
                 }

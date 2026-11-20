@@ -171,6 +171,7 @@ class DatabaseService:
         official_platform: str,
         official_user_id: str,
         qq_user_id: str,
+        force: bool = False,
     ) -> bool:
         import re
 
@@ -204,7 +205,7 @@ class DatabaseService:
                 "WHERE official_platform = ? AND qq_user_id = ?",
                 (platform, target_id),
             ).fetchone()
-            if int(bound_count[0] or 0) >= MAX_BINDINGS_PER_QQ:
+            if not force and int(bound_count[0] or 0) >= MAX_BINDINGS_PER_QQ:
                 conn.rollback()
                 return False
 

@@ -1,6 +1,6 @@
 """图片效果与渲染服务。
 
-- 猜卡面：9 种效果（模糊/分块/切割/截取/长条）
+- 猜卡面：7 种效果（模糊/分块/切割/截取）
 - 猜曲绘：4 种效果（模糊/随机裁切/分块简易/分块困难）
 - 猜歌：12 个曲绘选项图
 - 排行榜：沿用原插件的横向表格 UI
@@ -40,61 +40,49 @@ CARD_DEFAULT_EFFECTS = {
         "description": "轻微高斯模糊",
         "enabled": True,
         "difficulty": 1,
-        "blur_radius": 8,
+        "blur_radius": 40,
     },
     "heavy_blur": {
         "name": "重度模糊",
         "description": "较强高斯模糊",
         "enabled": True,
         "difficulty": 2,
-        "blur_radius": 25,
+        "blur_radius": 80,
     },
     "shuffle_blocks_easy": {
         "name": "分块打乱(简易)",
         "description": "较大方块随机重排",
         "enabled": True,
         "difficulty": 1,
-        "block_size": 50,
+        "block_size": 128,
     },
     "shuffle_blocks_hard": {
         "name": "分块打乱(困难)",
         "description": "较小方块随机重排",
         "enabled": True,
         "difficulty": 3,
-        "block_size": 20,
+        "block_size": 48,
     },
     "horizontal_slice": {
         "name": "横向切割",
         "description": "横向长条随机重排",
         "enabled": True,
         "difficulty": 2,
-        "slice_count": 8,
+        "slice_count": 16,
     },
     "vertical_slice": {
         "name": "纵向切割",
         "description": "纵向长条随机重排",
         "enabled": True,
         "difficulty": 2,
-        "slice_count": 8,
+        "slice_count": 16,
     },
     "crop_area": {
         "name": "截取区域",
         "description": "随机显示一部分区域",
         "enabled": True,
         "difficulty": 1,
-        "crop_ratio": 0.5,
-    },
-    "two_strips": {
-        "name": "两长条截取",
-        "description": "随机截取两条横向长条",
-        "enabled": True,
-        "difficulty": 3,
-    },
-    "three_strips": {
-        "name": "三长条截取",
-        "description": "随机截取三条横向长条",
-        "enabled": True,
-        "difficulty": 4,
+        "crop_ratio": 0.35,
     },
 }
 
@@ -325,74 +313,22 @@ class ImageService:
             logger.error(f"[OurNotes] 截取区域失败: {exc}", exc_info=True)
             return img
 
-    @staticmethod
-    def _strips(img: Image.Image, count: int) -> Image.Image:
-        try:
-            w, h = img.size
-            if count == 2:
-                strip_h = random.randint(max(int(h * 0.10), 25), max(int(h * 0.35), 35))
-                strip_h = min(strip_h, h // 2 - 1)
-            else:
-                strip_h = random.randint(max(int(h * 0.08), 20), max(int(h * 0.20), 28))
-                strip_h = min(strip_h, h // count - 1)
-            strip_w = random.randint(max(int(w * 0.5), 60), max(int(w * 0.85), 80))
-            if strip_h <= 0 or strip_w <= 0:
-                return img
-
-            possible_ys = list(range(0, max(1, h - strip_h + 1)))
-            random.shuffle(possible_ys)
-            found: list[int] = []
-            for y in possible_ys:
-                if not any(y < ey + strip_h and y + strip_h > ey for ey in found):
-                    found.append(y)
-                if len(found) == count:
-                    break
-            if len(found) < count:
-                return img
-            found.sort()
-
-            divider_h = 3
-            total_h = strip_h * count + divider_h * (count - 1)
-            result = Image.new(img.mode, (strip_w, total_h))
-            y_offset = 0
-            for i, orig_y in enumerate(found):
-                max_x = max(0, w - strip_w)
-                x = random.randint(0, max_x) if max_x else 0
-                piece = img.crop((x, orig_y, x + strip_w, orig_y + strip_h))
-                result.paste(piece, (0, y_offset))
-                y_offset += strip_h
-                if i < len(found) - 1:
-                    draw = ImageDraw.Draw(result)
-                    draw.rectangle(
-                        [(0, y_offset), (strip_w - 1, y_offset + divider_h - 1)],
-                        fill=(255, 255, 255),
-                    )
-                    y_offset += divider_h
-            return result
-        except Exception as exc:  # noqa: BLE001
-            logger.error(f"[OurNotes] 长条截取失败: {exc}", exc_info=True)
-            return img
-
     def _apply_card_effect(self, img: Image.Image, name: str) -> Image.Image:
         info = self.card_effects.get(name)
         if not info:
             return img
         if name == "light_blur":
-            return img.filter(ImageFilter.GaussianBlur(radius=info.get("blur_radius", 8)))
+            return img.filter(ImageFilter.GaussianBlur(radius=info.get("blur_radius", 40)))
         if name == "heavy_blur":
-            return img.filter(ImageFilter.GaussianBlur(radius=info.get("blur_radius", 25)))
+            return img.filter(ImageFilter.GaussianBlur(radius=info.get("blur_radius", 80)))
         if name in ("shuffle_blocks_easy", "shuffle_blocks_hard"):
-            return self._shuffle_blocks(img, int(info.get("block_size", 50)))
+            return self._shuffle_blocks(img, int(info.get("block_size", 128)))
         if name == "horizontal_slice":
-            return self._horizontal_slice(img, int(info.get("slice_count", 8)))
+            return self._horizontal_slice(img, int(info.get("slice_count", 16)))
         if name == "vertical_slice":
-            return self._vertical_slice(img, int(info.get("slice_count", 8)))
+            return self._vertical_slice(img, int(info.get("slice_count", 16)))
         if name == "crop_area":
-            return self._crop_area(img, float(info.get("crop_ratio", 0.5)))
-        if name == "two_strips":
-            return self._strips(img, 2)
-        if name == "three_strips":
-            return self._strips(img, 3)
+            return self._crop_area(img, float(info.get("crop_ratio", 0.35)))
         return img
 
     def apply_card_effects(self, img: Image.Image, names: list[str]) -> Image.Image:
