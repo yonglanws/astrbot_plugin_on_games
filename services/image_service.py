@@ -190,7 +190,8 @@ class ImageService:
     def random_jacket_effect(self) -> tuple[str, str, int]:
         enabled = self.get_enabled_jacket_effects()
         if not enabled:
-            return "none", "无效果", 0
+            # 全部效果关闭时也要给最低 1 分，否则答对得 0 分（卡面分支一直是 1）
+            return "none", "无效果", 1
         name = random.choice(enabled)
         info = self.jacket_effects[name]
         return name, info["name"], int(info.get("difficulty", 1))
@@ -341,7 +342,8 @@ class ImageService:
     def apply_jacket_effect(self, img: Image.Image, name: str) -> tuple[Image.Image, int]:
         info = self.jacket_effects.get(name)
         if not info:
-            return img, 0
+            # "none" / 未知效果：与 random_jacket_effect 保持一致，最低 1 分
+            return img, 1
         difficulty = int(info.get("difficulty", 1))
         if name == "blur":
             return (

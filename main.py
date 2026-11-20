@@ -95,7 +95,7 @@ except ImportError:  # 以脚本方式加载（单测）时
 PLUGIN_NAME = "astrbot_plugin_on_games"
 PLUGIN_AUTHOR = "慵懒午睡"
 PLUGIN_DESCRIPTION = "OurNotes/MoeNotes 猜歌、猜卡面、猜曲绘三合一娱乐插件"
-PLUGIN_VERSION = "1.0.4"
+PLUGIN_VERSION = "1.0.5"
 PLUGIN_REPO_URL = "https://github.com/yonglanws/astrbot_plugin_on_games"
 
 GAME_SONG = "song"
@@ -172,10 +172,34 @@ _CJK_NAME_PATTERN = re.compile(r"[\u4e00-\u9fff\u3040-\u30ff]")
 
 
 class GameSessionFilter(SessionFilter):
-    """只接收同一会话（群/私聊）中的消息。"""
+    """只接收同一会话（群/私聊）中的消息。
+
+    AstrBot 4.30 的 SessionFilter 只能决定「会话键」：命中 waiter 的事件一定会被
+    stop_event 吞掉。这里给明显不是答案的消息换一个独立会话键（会话键 + 发送者），
+    让超长文本（不可能是曲名/角色名）继续走正常处理，避免被对局吞掉。
+    "/" 开头的消息不跳过：各插件都支持用 / 前缀作答（/miku、/123），
+    区分「指令」与「斜杠答案」需要 AstrBot 的指令表，当前版本拿不到。
+    """
+
+    CONTROL_WORDS = {"退出", "退出本局", "仅退出本局", "退出自动模式"}
+    MAX_ANSWER_LEN = 60
+
+    def __init__(self) -> None:
+        self._registered = False
 
     def filter(self, event: AstrMessageEvent) -> str:
-        return _normalized_session_id(event)
+        base = _normalized_session_id(event)
+        if not self._registered:
+            self._registered = True
+            return base
+
+        text = (event.message_str or "").strip()
+        stripped = text[1:].strip() if text.startswith("/") else text
+        if stripped in self.CONTROL_WORDS:
+            return base
+        if len(stripped) > self.MAX_ANSWER_LEN:
+            return f"{base}|skip|{event.get_sender_id()}"
+        return base
 
 
 @dataclass
@@ -1139,6 +1163,9 @@ class OnGamesPlugin(Star):  # type: ignore
                 await song_waiter(event, session_filter=GameSessionFilter())
             except TimeoutError:
                 pass
+            except Exception as e:
+                # 答题回调里的写库/身份解析抛错时，不能让异常直接掀掉整局（旧实现只捕 TimeoutError）
+                logger.error(f"[OurNotes] song_waiter 等待器异常，按超时处理: {e}", exc_info=True)
 
             # 无人作答时由发起者承担一次失败
             if not any_genuine_attempt:
@@ -1379,6 +1406,9 @@ class OnGamesPlugin(Star):  # type: ignore
                 await card_waiter(event, session_filter=GameSessionFilter())
             except TimeoutError:
                 pass
+            except Exception as e:
+                # 答题回调里的写库/身份解析抛错时，不能让异常直接掀掉整局（旧实现只捕 TimeoutError）
+                logger.error(f"[OurNotes] card_waiter 等待器异常，按超时处理: {e}", exc_info=True)
 
             for failed in failed_attempters:
                 await asyncio.to_thread(
@@ -1621,6 +1651,9 @@ class OnGamesPlugin(Star):  # type: ignore
                 await jacket_waiter(event, session_filter=GameSessionFilter())
             except TimeoutError:
                 pass
+            except Exception as e:
+                # 答题回调里的写库/身份解析抛错时，不能让异常直接掀掉整局（旧实现只捕 TimeoutError）
+                logger.error(f"[OurNotes] jacket_waiter 等待器异常，按超时处理: {e}", exc_info=True)
 
             for failed in failed_attempters:
                 await asyncio.to_thread(
