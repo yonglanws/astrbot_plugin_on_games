@@ -32,6 +32,9 @@ GAME_LABELS = {
 
 DEFAULT_PLATFORM_NAME = "aiocqhttp"
 OFFICIAL_PLATFORM_NAME = "qq_official"
+# 中央绑定插件同时接受 WebSocket / Webhook 两种官方适配器；插件内部统一
+# 归一到 qq_official，避免同一个人在两种接入方式下被拆成两份数据。
+OFFICIAL_PLATFORM_NAMES = frozenset({OFFICIAL_PLATFORM_NAME, "qq_official_webhook"})
 MAX_BINDINGS_PER_QQ = 2
 
 
@@ -54,7 +57,10 @@ class DatabaseService:
 
     @staticmethod
     def _normalize_platform(platform_name: Optional[str]) -> str:
-        return str(platform_name or DEFAULT_PLATFORM_NAME).strip().lower()
+        value = str(platform_name or DEFAULT_PLATFORM_NAME).strip().lower()
+        if value in OFFICIAL_PLATFORM_NAMES:
+            return OFFICIAL_PLATFORM_NAME
+        return value
 
     def init_db(self) -> None:
         conn = self._connect()

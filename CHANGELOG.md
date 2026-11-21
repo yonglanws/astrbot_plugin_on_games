@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.6
+- 识别 QQ 官方 Webhook 适配器（qq_official_webhook），统一归一到 qq_official；Webhook 模式下绑定解析与分数合并不再失效。
+- 黑名单/超级用户判定补上 event.extra 里的 mzkbot_openid，per_user_replace 后按 openid 配置的拉黑/管理员权限仍生效。
+
 ## v1.0.5
 - 三个游戏的答题等待器除 TimeoutError 外也捕获其它异常并记日志，答题回调写库/身份解析抛错不再整局跳过结算。
 - 全部效果关闭的猜曲绘按 1 分结算（原来答对得 0 分），与猜卡面分支一致。

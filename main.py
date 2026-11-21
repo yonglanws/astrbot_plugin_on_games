@@ -66,6 +66,7 @@ try:
     from .services.db_service import (
         DEFAULT_PLATFORM_NAME,
         OFFICIAL_PLATFORM_NAME,
+        OFFICIAL_PLATFORM_NAMES,
     )
     from .services.master_data_service import MIN_CARD_RARITY
 except ImportError:  # 以脚本方式加载（单测）时
@@ -82,6 +83,7 @@ except ImportError:  # 以脚本方式加载（单测）时
     from services.db_service import (  # type: ignore
         DEFAULT_PLATFORM_NAME,
         OFFICIAL_PLATFORM_NAME,
+        OFFICIAL_PLATFORM_NAMES,
     )
     from services.master_data_service import MIN_CARD_RARITY  # type: ignore
 
@@ -95,7 +97,7 @@ except ImportError:  # 以脚本方式加载（单测）时
 PLUGIN_NAME = "astrbot_plugin_on_games"
 PLUGIN_AUTHOR = "慵懒午睡"
 PLUGIN_DESCRIPTION = "OurNotes/MoeNotes 猜歌、猜卡面、猜曲绘三合一娱乐插件"
-PLUGIN_VERSION = "1.0.5"
+PLUGIN_VERSION = "1.0.6"
 PLUGIN_REPO_URL = "https://github.com/yonglanws/astrbot_plugin_on_games"
 
 GAME_SONG = "song"
@@ -573,10 +575,24 @@ class OnGamesPlugin(Star):  # type: ignore
             platform_name = getter() if callable(getter) else DEFAULT_PLATFORM_NAME
         except Exception:  # noqa: BLE001
             platform_name = DEFAULT_PLATFORM_NAME
-        return str(platform_name or DEFAULT_PLATFORM_NAME).strip().lower()
+        name = str(platform_name or DEFAULT_PLATFORM_NAME).strip().lower()
+        if name in OFFICIAL_PLATFORM_NAMES:
+            return OFFICIAL_PLATFORM_NAME
+        return name
 
     def _is_qq_official_event(self, event: AstrMessageEvent) -> bool:
         return self._get_event_platform_name(event) == OFFICIAL_PLATFORM_NAME
+
+    @staticmethod
+    def _get_event_openid(event: AstrMessageEvent) -> str:
+        """per_user_replace 后原始 openid 只在中央插件的 extra 里。"""
+        getter = getattr(event, "get_extra", None)
+        if callable(getter):
+            try:
+                return str(getter("mzkbot_openid") or "").strip()
+            except Exception:
+                return ""
+        return ""
 
     async def _is_bound_qq_sender(self, event: AstrMessageEvent, user_id: str) -> bool:
         """判断官机事件是否已被中央绑定插件替换为绑定 QQ。"""
@@ -637,15 +653,25 @@ class OnGamesPlugin(Star):  # type: ignore
     def _is_event_user_blacklisted(
         self, event: AstrMessageEvent, canonical_user_id: Optional[str] = None
     ) -> bool:
-        raw = str(event.get_sender_id())
-        return self._is_user_blacklisted(raw) or (
-            canonical_user_id is not None
-            and self._is_user_blacklisted(canonical_user_id)
-        )
+        # per_user_replace 后 sender 是绑定 QQ，黑名单里写 openid 时必须一起查。
+        candidates = {str(event.get_sender_id())}
+        if canonical_user_id is not None:
+            candidates.add(str(canonical_user_id))
+        openid = self._get_event_openid(event)
+        if openid:
+            candidates.add(openid)
+        return any(self._is_user_blacklisted(uid) for uid in candidates)
 
     def _is_super_user(self, user_id: str) -> bool:
         super_users = {str(x) for x in self.config.get("super_users", [])}
         return bool(super_users) and str(user_id) in super_users
+
+    def _is_event_super_user(self, event: AstrMessageEvent) -> bool:
+        candidates = {str(event.get_sender_id())}
+        openid = self._get_event_openid(event)
+        if openid:
+            candidates.add(openid)
+        return any(self._is_super_user(uid) for uid in candidates)
 
     def _get_display_name(self, user_id: str, original_name: Optional[str] = None) -> str:
         if self._is_user_blacklisted(user_id):
@@ -2018,7 +2044,7 @@ class OnGamesPlugin(Star):  # type: ignore
     )
     async def reset_daily_limit(self, event: AstrMessageEvent):
         sender_id = str(event.get_sender_id())
-        if not self._is_super_user(sender_id):
+        if not self._is_event_super_user(event):
             yield event.plain_result("只有管理员才能使用此命令哦~")
             return
 
@@ -2039,7 +2065,7 @@ class OnGamesPlugin(Star):  # type: ignore
     )
     async def refresh_master_data(self, event: AstrMessageEvent):
         sender_id = str(event.get_sender_id())
-        if not self._is_super_user(sender_id):
+        if not self._is_event_super_user(event):
             yield event.plain_result("只有管理员才能使用此命令哦~")
             return
 
